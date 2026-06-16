@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from routers.user_routers import router as user_router
-from routers.test_uload_router import router as test_upload_router
+from routers.file_upload_router import router as test_upload_router
 
 from routers.auth_routers import router as auth_router
 # from backend.routers.protected_router import router as protected_router

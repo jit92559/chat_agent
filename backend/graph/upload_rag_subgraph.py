@@ -19,10 +19,21 @@ from rag_nodes.extractor_nodes import (
 from rag_nodes.vectorstore_node import vectorstore_node
 
 
+def route_after_extraction(state: MainState) -> str:
+    if state.get("status") == "failed":
+        return "error"
+
+    extracted_text = state.get("extracted_text")
+
+    if not extracted_text or not extracted_text.strip():
+        return "error"
+
+    return "vectorstore"
+
+
 def build_upload_graph():
     builder = StateGraph(MainState)
 
-    # Add nodes
     builder.add_node("detect_file_type", detect_file_type_node)
 
     builder.add_node("pdf_extractor", pdf_extractor_node)
@@ -34,10 +45,8 @@ def build_upload_graph():
     builder.add_node("vectorstore", vectorstore_node)
     builder.add_node("error", error_node)
 
-    # Start
     builder.add_edge(START, "detect_file_type")
 
-    # Conditional routing
     builder.add_conditional_edges(
         "detect_file_type",
         route_extractor,
@@ -51,14 +60,22 @@ def build_upload_graph():
         },
     )
 
-    # All extractors go to vectorstore
-    builder.add_edge("pdf_extractor", "vectorstore")
-    builder.add_edge("ppt_extractor", "vectorstore")
-    builder.add_edge("doc_extractor", "vectorstore")
-    builder.add_edge("txt_extractor", "vectorstore")
-    builder.add_edge("image_extractor", "vectorstore")
+    for extractor in [
+        "pdf_extractor",
+        "ppt_extractor",
+        "doc_extractor",
+        "txt_extractor",
+        "image_extractor",
+    ]:
+        builder.add_conditional_edges(
+            extractor,
+            route_after_extraction,
+            {
+                "vectorstore": "vectorstore",
+                "error": "error",
+            },
+        )
 
-    # End
     builder.add_edge("vectorstore", END)
     builder.add_edge("error", END)
 

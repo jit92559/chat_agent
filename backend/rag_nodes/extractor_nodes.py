@@ -1,7 +1,7 @@
 from graph.state import MainState
 
 import base64
-import fitz  # PyMuPDF
+import pymupdf  # PyMuPDF
 
 from pptx import Presentation
 from docx import Document
@@ -51,7 +51,7 @@ Return clean text suitable for RAG.
 def pdf_extractor_node(state: MainState) -> dict:
     try:
         file_path = state["file_path"]
-        doc = fitz.open(file_path)
+        doc = pymupdf.open(file_path)
 
         all_text = []
 

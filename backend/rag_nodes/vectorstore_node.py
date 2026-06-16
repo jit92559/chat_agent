@@ -1,9 +1,7 @@
 from graph.state import MainState
-
 from pathlib import Path
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
 from langchain_community.vectorstores import FAISS
 from langchain_ollama import OllamaEmbeddings
 
@@ -17,7 +15,7 @@ def vectorstore_node(state: MainState) -> dict:
     try:
         text = state["extracted_text"]
 
-        if not text:
+        if not text or not text.strip():
             return {
                 "status": "failed",
                 "error": "No extracted text found",
@@ -25,10 +23,9 @@ def vectorstore_node(state: MainState) -> dict:
 
         user_id = state["user_id"]
         thread_id = state["thread_id"]
+        file_id = state.get("selected_file_id")
 
-        vectorstore_path = (
-            f"storage/vectorstores/{user_id}/{thread_id}"
-        )
+        vectorstore_path = f"storage/vectorstores/{user_id}/{thread_id}"
 
         Path(vectorstore_path).mkdir(
             parents=True,
@@ -42,21 +39,34 @@ def vectorstore_node(state: MainState) -> dict:
 
         chunks = splitter.split_text(text)
 
-        if Path(f"{vectorstore_path}/index.faiss").exists():
+        metadatas = [
+            {
+                "user_id": user_id,
+                "thread_id": thread_id,
+                "file_id": file_id,
+                "file_name": state.get("file_name"),
+                "file_type": state.get("file_type"),
+            }
+            for _ in chunks
+        ]
 
+        if Path(f"{vectorstore_path}/index.faiss").exists():
             vectorstore = FAISS.load_local(
                 vectorstore_path,
                 embeddings,
                 allow_dangerous_deserialization=True,
             )
 
-            vectorstore.add_texts(chunks)
+            vectorstore.add_texts(
+                texts=chunks,
+                metadatas=metadatas,
+            )
 
         else:
-
             vectorstore = FAISS.from_texts(
-                chunks,
-                embeddings,
+                texts=chunks,
+                embedding=embeddings,
+                metadatas=metadatas,
             )
 
         vectorstore.save_local(vectorstore_path)
