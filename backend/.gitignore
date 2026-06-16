@@ -1,0 +1,12 @@
+chatbot_env
+.env
+services/__pycache__
+schemas/__pycache__
+routers/__pycache__
+middlewares/__pycache__
+controllers/__pycache__
+configs/__pycache__
+controllers/__pycache__
+__pycache__
+storage
+uploads
