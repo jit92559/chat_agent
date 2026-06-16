@@ -12,3 +12,4 @@ db = client[DB_NAME]
 
 users_collection = db["users"]
 file_uploads_collection = db["file_uploads"]
+threads_collection = db["threads"]

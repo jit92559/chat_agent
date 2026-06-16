@@ -4,6 +4,8 @@ from routers.file_upload_router import router as test_upload_router
 
 from routers.auth_routers import router as auth_router
 # from backend.routers.protected_router import router as protected_router
+from routers.threads_router import router as thread_router
+
 from middlewares.auth_middlewares import AuthMiddleware
 app = FastAPI(
     title="Chatbot API",
@@ -15,6 +17,8 @@ app.include_router(auth_router)
 # app.include_router(protected_router)
 app.include_router(user_router)
 app.include_router(test_upload_router)
+app.include_router(thread_router)
+
 @app.get("/")
 async def root():
     return {
