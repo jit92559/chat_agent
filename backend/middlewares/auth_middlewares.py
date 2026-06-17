@@ -15,6 +15,7 @@ PUBLIC_PATHS = [
     "/api/user/profile",
     "/files/upload-rag",
     "/api/chat/stream"
+    "/files/upload-rag"
 ]
 
 
