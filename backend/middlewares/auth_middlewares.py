@@ -13,7 +13,7 @@ PUBLIC_PATHS = [
     "/api/auth/register",
     "/api/auth/login",
     "/api/user/profile",
-    "/test/upload-rag"
+    "/files/upload-rag"
 ]
 
 
