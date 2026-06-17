@@ -4,12 +4,12 @@ from langgraph.graph.message import add_messages
 
 
 class MainState(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
+    # messages: Annotated[list[BaseMessage], add_messages]
 
     user_id: str
     thread_id: str
 
-    input_text: Optional[str]
+    # input_text: Optional[str]
 
     is_file: bool
     file_path: Optional[str]
@@ -21,12 +21,12 @@ class MainState(TypedDict):
 
     extracted_text: Optional[str]
 
-    retrieved_docs: list[str]
-    context: Optional[str]
+    # retrieved_docs: list[str]
+    # context: Optional[str]
 
     route: str
 
-    answer: str
+    # answer: str
 
     status: str
     error: Optional[str]

@@ -1,14 +1,13 @@
 from graph.state import MainState
 from pathlib import Path
 
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_ollama import OllamaEmbeddings
 
+from llms.embedding_model import get_embedding_model
 
-embeddings = OllamaEmbeddings(
-    model="nomic-embed-text"
-)
+embeddings =get_embedding_model()
 
 
 def vectorstore_node(state: MainState) -> dict:

@@ -1,5 +1,5 @@
 from graph.state import MainState
-
+from llms.vision_model import get_vision_model
 import base64
 import pymupdf  # PyMuPDF
 
@@ -12,11 +12,7 @@ from langchain_core.messages import HumanMessage
 
 load_dotenv()
 
-vision_model = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    temperature=0,
-)
-
+vision_model = get_vision_model()
 
 def describe_image_bytes(image_bytes: bytes, mime_type: str = "image/png") -> str:
     try:
@@ -65,7 +61,7 @@ def pdf_extractor_node(state: MainState) -> dict:
 
             # Full page OCR for scanned PDF pages
             try:
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+                pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2))
                 page_image_bytes = pix.tobytes("png")
 
                 page_description = describe_image_bytes(
@@ -310,6 +306,6 @@ def txt_extractor_node(state: MainState) -> dict:
 
 def error_node(state: MainState) -> dict:
     return {
-        "answer": f"Error: {state.get('error', 'Unknown error occurred')}",
+        "error": f"Error: {state.get('error', 'Unknown error occurred')}",
         "status": "failed",
     }

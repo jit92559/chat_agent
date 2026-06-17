@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from graph.upload_rag_subgraph import build_upload_graph
 from configs.db_config import file_uploads_collection
 
-router = APIRouter(prefix="/test", tags=["Test Upload RAG"])
+router = APIRouter(prefix="/files", tags=["Test Upload RAG"])
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
