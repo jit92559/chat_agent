@@ -31,3 +31,9 @@ python-pptx
 unstructured
 
 requests
+
+
+langgraph-checkpoint-mongodb
+pymongo
+
+tavily-python

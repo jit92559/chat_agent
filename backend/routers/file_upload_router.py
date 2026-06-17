@@ -24,7 +24,7 @@ async def test_upload_rag(
     try:
         # user = request.state.user
 
-        user_id = "user_id1"
+        user_id = "id1"
         email = 'monojitbairagi0@gmail.com'
 
         file_id = str(uuid4())
