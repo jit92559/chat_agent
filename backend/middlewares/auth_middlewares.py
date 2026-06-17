@@ -12,10 +12,6 @@ PUBLIC_PATHS = [
     "/openapi.json",
     "/api/auth/register",
     "/api/auth/login",
-    "/api/user/profile",
-    "/files/upload-rag",
-    "/api/chat/stream"
-    "/files/upload-rag"
 ]
 
 
@@ -23,11 +19,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
+        # IMPORTANT: allow CORS preflight request
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         if path in PUBLIC_PATHS:
             return await call_next(request)
-        print(request.headers)
+
         auth_header = request.headers.get("Authorization")
-        print(auth_header)
+
         if not auth_header or not auth_header.startswith("Bearer "):
             return JSONResponse(
                 status_code=401,

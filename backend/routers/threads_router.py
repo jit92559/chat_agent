@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from configs.db_config import threads_collection
+from configs.db_config import (threads_collection,messages_collection)
 
 router = APIRouter(prefix="/threads", tags=["Threads"])
 
@@ -48,3 +48,42 @@ async def get_user_threads(request: Request):
         "success": True,
         "threads": threads,
     }
+
+@router.get("/{thread_id}/messages")
+async def get_thread_messages(
+    request: Request,
+    thread_id: str,
+):
+    try:
+        user = request.state.user
+
+        user_id = str(
+            user.get("id")
+            or user.get("_id")
+            or user.get("user_id")
+        )
+
+        cursor = messages_collection.find(
+            {
+                "user_id": user_id,
+                "thread_id": thread_id,
+            },
+            {
+                "_id": 0,
+            },
+        ).sort("created_at", 1)
+
+        messages = await cursor.to_list(length=None)
+
+        return {
+            "success": True,
+            "thread_id": thread_id,
+            "messages": messages,
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "messages": [],
+        }

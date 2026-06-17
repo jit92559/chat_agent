@@ -2,7 +2,7 @@ from langchain_core.messages import HumanMessage
 from llms.chat_llm import get_llm
 
 
-def router_node(state):
+async def router_node(state):
     llm = get_llm()
 
     prompt = f"""
@@ -93,7 +93,7 @@ User Query:
 {state["input_text"]}
 """
 
-    result = llm.invoke([HumanMessage(content=prompt)])
+    result = await llm.ainvoke([HumanMessage(content=prompt)])
 
     route = result.content.strip().lower()
 

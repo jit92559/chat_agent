@@ -1,5 +1,3 @@
-# graph/nodes/update_longterm_memory.py
-
 from langchain_core.messages import HumanMessage
 from llms.chat_llm import get_llm
 from services.memory_service import save_longterm_memory
@@ -34,7 +32,10 @@ Rules:
 Return only memory text.
 """
 
-    result = llm.invoke([HumanMessage(content=prompt)])
+    result = await llm.ainvoke(
+        [HumanMessage(content=prompt)]
+    )
+
     updated_memory = result.content.strip()
 
     await save_longterm_memory(

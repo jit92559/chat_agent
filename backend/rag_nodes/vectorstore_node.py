@@ -1,16 +1,17 @@
 from graph.state import MainState
 from pathlib import Path
 
-
+from fastapi.concurrency import run_in_threadpool
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 
 from llms.embedding_model import get_embedding_model
+from services.vectorstore_cache import invalidate_vectorstore
 
-embeddings =get_embedding_model()
+embeddings = get_embedding_model()
 
 
-def vectorstore_node(state: MainState) -> dict:
+async def vectorstore_node(state: MainState) -> dict:
     try:
         text = state["extracted_text"]
 
@@ -49,26 +50,31 @@ def vectorstore_node(state: MainState) -> dict:
             for _ in chunks
         ]
 
-        if Path(f"{vectorstore_path}/index.faiss").exists():
-            vectorstore = FAISS.load_local(
-                vectorstore_path,
-                embeddings,
-                allow_dangerous_deserialization=True,
-            )
+        def _update_vectorstore_sync():
+            if Path(f"{vectorstore_path}/index.faiss").exists():
+                vectorstore = FAISS.load_local(
+                    vectorstore_path,
+                    embeddings,
+                    allow_dangerous_deserialization=True,
+                )
 
-            vectorstore.add_texts(
-                texts=chunks,
-                metadatas=metadatas,
-            )
+                vectorstore.add_texts(
+                    texts=chunks,
+                    metadatas=metadatas,
+                )
 
-        else:
-            vectorstore = FAISS.from_texts(
-                texts=chunks,
-                embedding=embeddings,
-                metadatas=metadatas,
-            )
+            else:
+                vectorstore = FAISS.from_texts(
+                    texts=chunks,
+                    embedding=embeddings,
+                    metadatas=metadatas,
+                )
 
-        vectorstore.save_local(vectorstore_path)
+            vectorstore.save_local(vectorstore_path)
+
+        await run_in_threadpool(_update_vectorstore_sync)
+
+        invalidate_vectorstore(user_id, thread_id)
 
         return {
             "vectorstore_path": vectorstore_path,

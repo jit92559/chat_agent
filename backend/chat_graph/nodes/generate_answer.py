@@ -2,7 +2,7 @@ from langchain_core.messages import SystemMessage
 from llms.chat_llm import get_llm
 
 
-def generate_answer_node(state):
+async def generate_answer_node(state):
     llm = get_llm()
 
     system_prompt = f"""
@@ -39,7 +39,7 @@ User Profile:
 {state.get("longterm_memory") or ""}
 """
 
-    result = llm.invoke([
+    result = await llm.ainvoke([
         SystemMessage(content=system_prompt),
         *state["messages"],
     ])

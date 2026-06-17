@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from jose import jwt
 from passlib.context import CryptContext
+from fastapi.concurrency import run_in_threadpool
 
 from configs.auth_config import (
     SECRET_KEY,
@@ -13,12 +14,19 @@ from configs.db_config import users_collection
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def hash_password(password: str):
-    return pwd_context.hash(password)
+async def hash_password(password: str):
+    return await run_in_threadpool(
+        pwd_context.hash,
+        password,
+    )
 
 
-def verify_password(plain_password: str, hashed_password: str):
-    return pwd_context.verify(plain_password, hashed_password)
+async def verify_password(plain_password: str, hashed_password: str):
+    return await run_in_threadpool(
+        pwd_context.verify,
+        plain_password,
+        hashed_password,
+    )
 
 
 def create_access_token(data: dict):
@@ -39,10 +47,12 @@ async def register_user(name: str, email: str, password: str):
     if existing_user:
         return None
 
+    hashed_password = await hash_password(password)
+
     user = {
         "name": name,
         "email": email,
-        "password": hash_password(password),
+        "password": hashed_password,
         "created_at": datetime.now(timezone.utc),
     }
 
@@ -58,7 +68,9 @@ async def authenticate_user(email: str, password: str):
     if not user:
         return None
 
-    if not verify_password(password, user["password"]):
+    is_valid = await verify_password(password, user["password"])
+
+    if not is_valid:
         return None
 
     user["_id"] = str(user["_id"])

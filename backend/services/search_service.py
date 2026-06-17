@@ -1,7 +1,7 @@
-# services/search_service.py
-
 import os
+
 from tavily import TavilyClient
+from fastapi.concurrency import run_in_threadpool
 
 
 client = TavilyClient(
@@ -10,11 +10,14 @@ client = TavilyClient(
 
 
 async def web_search(query: str) -> str:
-    response = client.search(
-        query=query,
-        search_depth="advanced",
-        max_results=5,
-    )
+    def _search():
+        return client.search(
+            query=query,
+            search_depth="advanced",
+            max_results=5,
+        )
+
+    response = await run_in_threadpool(_search)
 
     results = []
 
