@@ -12,7 +12,6 @@ PUBLIC_PATHS = [
     "/openapi.json",
     "/api/auth/register",
     "/api/auth/login",
-    "/api/user/profile",
     "/files/upload-rag"
 ]
 
