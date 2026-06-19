@@ -1,109 +1,54 @@
-from langchain_core.messages import HumanMessage
-from llms.chat_llm import get_llm
+"""
+router.py - Keyword-based router (zero LLM calls)
+
+WHY: The original router called the LLM just to classify the route — that was
+an entire inference pass (20-40s on CPU) wasted before the actual answer even started.
+
+This version uses fast keyword/pattern matching instead.
+Same accuracy for clear-cut queries, instant execution (< 1ms).
+"""
+
+# Keywords that strongly indicate web/internet search is needed
+INTERNET_KEYWORDS = {
+    "today", "current", "latest", "now", "live", "real-time",
+    "news", "weather", "price", "stock", "score", "result",
+    "who won", "happening", "recent", "this week", "this month",
+    "right now", "at the moment", "currently", "update",
+}
+
+# Keywords that indicate the user is referring to an uploaded document
+RAG_KEYWORDS = {
+    "document", "file", "pdf", "ppt", "pptx", "docx", "doc",
+    "uploaded", "this file", "this doc", "this pdf", "the file",
+    "resume", "report", "summarize this", "explain this",
+    "what does it say", "in the document", "from the file",
+    "according to the file", "mention", "chapter", "page",
+}
 
 
 async def router_node(state):
-    llm = get_llm()
+    """
+    Classifies the user query into one of:
+      - normal_chat     (default)
+      - internet_search (time-sensitive / current events)
+      - rag_context     (user asks about an uploaded file)
 
-    prompt = f"""
-You are a routing classifier.
+    Uses keyword matching — no LLM call needed.
+    """
+    query = (state.get("input_text") or "").lower()
+    selected_file_id = state.get("selected_file_id")
 
-Your task is to classify the user's query into EXACTLY ONE route.
+    # If a file is explicitly selected in the UI, always use RAG
+    if selected_file_id:
+        return {"route": "rag_context"}
 
-AVAILABLE ROUTES
+    # Check for RAG keywords first (more specific)
+    if any(kw in query for kw in RAG_KEYWORDS):
+        return {"route": "rag_context"}
 
-1. normal_chat
-Use when:
-- General conversation
-- Coding questions
-- Explanations
-- Mathematics
-- Reasoning
-- Grammar correction
-- Writing assistance
-- Opinions
-- Summarization of user provided text
-- Any question answerable without internet or document search
+    # Check for internet search keywords
+    if any(kw in query for kw in INTERNET_KEYWORDS):
+        return {"route": "internet_search"}
 
-Examples:
-"What is Python?"
-"Explain FastAPI"
-"Correct my English"
-"Write a linked list in C++"
-
---------------------------------------------------
-
-2. internet_search
-Use when:
-- User asks for latest information
-- User asks about current events
-- User asks about news
-- User asks about today's weather
-- User asks about current stock prices
-- User asks about recent sports results
-- User asks about current government policies
-- User asks about anything that may have changed after your training data
-- User asks about date,year,month,any events such as dewali , rath yatra
-
-Examples:
-"Who won yesterday's IPL match?"
-"Weather in Kolkata today"
-"Latest AI news"
-"Current price of Bitcoin"
-
---------------------------------------------------
-
-3. rag_context
-Use when:
-- User asks about uploaded documents
-- User asks questions about uploaded PDFs
-- User asks questions about uploaded PPTs
-- User asks questions about uploaded images
-- User refers to:
-  - this document
-  - this file
-  - this PDF
-  - this image
-  - uploaded file
-  - selected file
-- User wants information from vector database knowledge
-
-Examples:
-"Summarize this PDF"
-"What does this document say?"
-"Explain chapter 2 of the uploaded file"
-"Find the deadline mentioned in the document"
-
---------------------------------------------------
-
-IMPORTANT RULES
-
-- Return ONLY one route.
-- Do NOT explain.
-- Do NOT justify.
-- Do NOT output JSON.
-- Do NOT output code.
-- Output exactly one of:
-
-normal_chat
-internet_search
-rag_context
-
-User Query:
-{state["input_text"]}
-"""
-
-    result = await llm.ainvoke([HumanMessage(content=prompt)])
-
-    route = result.content.strip().lower()
-
-    if "internet_search" in route:
-        route = "internet_search"
-    elif "rag_context" in route:
-        route = "rag_context"
-    else:
-        route = "normal_chat"
-
-    return {
-        "route": route
-    }
+    # Default: normal conversation
+    return {"route": "normal_chat"}
