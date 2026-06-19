@@ -7,20 +7,20 @@ load_dotenv()
 
 def get_llm():
     """
-    Returns a Google Gemini chat model.
+    Returns a Google Gemini chat model via langchain-google-genai v4.x.
 
-    Why Gemini instead of local Ollama?
-    - Ollama runs on your CPU → very slow (30-120s per response)
-    - Gemini runs on Google's servers → fast (2-5s per response)
-    - Gemini has much better instruction following and RAG accuracy
-    - GOOGLE_API_KEY is already set in .env
+    langchain-google-genai v4+ uses the new google-genai SDK.
+    Correct model names for this version:
+      - gemini-2.0-flash        (fast, recommended)
+      - gemini-2.0-flash-lite   (fastest, lightest)
+      - gemini-2.5-flash        (smarter, slightly slower)
+      - gemini-2.5-pro          (most capable)
 
-    Model is configurable via CHAT_MODEL env var.
-    Defaults to 'gemini-1.5-flash' (fast, cheap, accurate).
-    Use 'gemini-1.5-pro' for higher accuracy on complex tasks.
+    The 'gemini-1.5-flash' name only works with the old v1beta API
+    and is NOT valid in langchain-google-genai v4+.
     """
     return ChatGoogleGenerativeAI(
-        model=os.getenv("CHAT_MODEL", "gemini-1.5-flash"),
+        model=os.getenv("CHAT_MODEL", "gemini-2.0-flash"),
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0,
     )
