@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import {
   Bot,
   ChevronLeft,
@@ -62,7 +63,13 @@ function Avatar({ role }) {
   );
 }
 
-function Message({ role, content, file_name }) {
+function Message({
+  role,
+  content,
+  file_name,
+  suggestions = [],
+  onSuggestionClick,
+}) {
   const isUser = role === 'user';
 
   return (
@@ -84,6 +91,28 @@ function Message({ role, content, file_name }) {
         )}
 
         {content}
+        {role === 'assistant' && suggestions.length > 0 && (
+  <div className="mt-3 flex flex-wrap gap-2">
+    {suggestions.map((suggestion, index) => (
+      <button
+        key={index}
+        onClick={() => onSuggestionClick?.(suggestion)}
+        className="
+          text-xs
+          px-3
+          py-1.5
+          rounded-full
+          border
+          border-gray-300
+          hover:bg-gray-100
+          transition
+        "
+      >
+        {suggestion}
+      </button>
+    ))}
+  </div>
+)}
       </div>
     </div>
   );
@@ -343,27 +372,46 @@ export default function ChatPage() {
 
       streamAbortRef.current = new AbortController();
 
-      await apiStreamChat({
-        thread_id: activeThread.thread_id,
-        message: text,
-        selected_file_id: selectedFileId,
-        signal: streamAbortRef.current.signal,
-        onToken: (token) => {
-          assistantText += token;
+          await apiStreamChat({
+            thread_id: activeThread.thread_id,
+            message: text,
+            selected_file_id: selectedFileId,
+            signal: streamAbortRef.current.signal,
 
-          setMessages((prev) => {
-            const updated = [...prev];
+            onToken: (token) => {
+              assistantText += token;
 
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              role: 'assistant',
-              content: assistantText,
-            };
+              setMessages((prev) => {
+                const updated = [...prev];
 
-            return updated;
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  role: 'assistant',
+                  content: assistantText,
+                };
+
+                return updated;
+              });
+            },
+
+            onComplete: ({ suggestions }) => {
+              setMessages((prev) => {
+                const updated = [...prev];
+
+                if (
+                  updated.length > 0 &&
+                  updated[updated.length - 1].role === 'assistant'
+                ) {
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    suggestions: suggestions || [],
+                  };
+                }
+
+                return updated;
+              });
+            },
           });
-        },
-      });
     } catch (err) {
       if (err.name === 'AbortError') {
         return;
@@ -546,12 +594,20 @@ export default function ChatPage() {
           ) : (
             <>
               {messages.map((msg, i) => (
-                <Message
-                  key={`${msg.id || i}-${msg.role}`}
-                  role={msg.role}
-                  content={msg.content}
-                  file_name={msg.file_name}
-                />
+                    <Message
+                      key={`${msg.id || i}-${msg.role}`}
+                      role={msg.role}
+                      content={msg.content}
+                      file_name={msg.file_name}
+                      suggestions={msg.suggestions}
+                      onSuggestionClick={(text) => {
+                        setInput(text);
+
+                        setTimeout(() => {
+                          textareaRef.current?.focus();
+                        }, 0);
+                      }}
+                    />
               ))}
 
               {isTyping && <TypingIndicator />}

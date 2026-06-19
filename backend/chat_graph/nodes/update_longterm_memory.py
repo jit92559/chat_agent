@@ -4,6 +4,7 @@ from services.memory_service import save_longterm_memory
 
 
 async def update_longterm_memory_node(state):
+    print("i am at update_longterm mermory_node")
     llm = get_llm()
 
     old_memory = state.get("longterm_memory") or ""

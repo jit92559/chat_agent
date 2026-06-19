@@ -30,3 +30,4 @@ class ChatState(TypedDict):
 
     
     answer: Optional[str]
+    suggestions: list[str]

@@ -21,6 +21,7 @@ async def describe_image_bytes(
     image_bytes: bytes,
     mime_type: str = "image/png",
 ) -> str:
+    print("i amm doin ocr")
     try:
         image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -51,6 +52,7 @@ Return clean text suitable for RAG.
 
 
 async def pdf_extractor_node(state: MainState) -> dict:
+    print(" iam at pdf_extrectror node")
     try:
         file_path = state["file_path"]
 

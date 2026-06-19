@@ -6,11 +6,7 @@ from uuid import uuid4
 from datetime import datetime, timezone
 
 from graph.upload_rag_subgraph import build_upload_graph
-from configs.db_config import (
-    file_uploads_collection,
-    messages_collection,
-    threads_collection,
-)
+from configs.db_config import file_uploads_collection
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -137,41 +133,6 @@ async def upload_rag_file(
 
         await file_uploads_collection.insert_one(file_doc)
 
-        await messages_collection.insert_many(
-            [
-                {
-                    "user_id": user_id,
-                    "email": email,
-                    "thread_id": thread_id,
-                    "role": "user",
-                    "content": f"Uploaded file: {file.filename}",
-                    "file_name": file.filename,
-                    "file_id": file_id,
-                    "created_at": now,
-                },
-                {
-                    "user_id": user_id,
-                    "email": email,
-                    "thread_id": thread_id,
-                    "role": "assistant",
-                    "content": f'File "{file.filename}" uploaded and processed successfully.',
-                    "created_at": now,
-                },
-            ]
-        )
-
-        await threads_collection.update_one(
-            {
-                "user_id": user_id,
-                "thread_id": thread_id,
-            },
-            {
-                "$set": {
-                    "updated_at": now,
-                }
-            },
-        )
-
         return {
             "success": True,
             "thread_id": thread_id,
@@ -252,8 +213,7 @@ async def get_thread_files(
         }
 
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "files": [],
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=str(e),
+        )

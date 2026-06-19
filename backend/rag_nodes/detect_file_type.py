@@ -16,6 +16,7 @@ SUPPORTED_FILE_TYPES = {
 
 
 def detect_file_type_node(state: MainState) -> dict:
+    print(" i am at detect file type node")
     try:
         if not state.get("is_file"):
             return {
