@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import json
 
 from chat_graph.chat_graph import build_chat_graph
-from configs.db_config import get_checkpointer
+from configs.db_config import get_checkpointer,threads_collection
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
@@ -88,7 +88,17 @@ async def stream_chat(req: ChatRequest, request: Request):
                 )
 
             final_answer = "".join(answer_parts)
+            thread_obj = await threads_collection.find_one({
+                    "thread_id": req.thread_id,
+                    "user_id": user_id
+                })
+            if thread_obj and thread_obj.get("title") in [None, "", "New Chat"]:
+                auto_title = final_answer[:50]
 
+                await threads_collection.update_one(
+                    {"thread_id": req.thread_id, "user_id": user_id},
+                    {"$set": {"title": auto_title}}
+                )
             # Read final graph state
             suggestions = []
 

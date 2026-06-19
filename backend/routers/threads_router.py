@@ -1,9 +1,25 @@
-from fastapi import APIRouter, Request
+# routers/thread_router.py
+
+import os
+import shutil
+import asyncio
+
+from fastapi import APIRouter, Request, HTTPException
+
+from configs.db_config import (
+    threads_collection,
+    file_uploads_collection,
+    sync_client,
+    CHECK_DB,
+    get_checkpointer
+)
+
+
 from uuid import uuid4
 from datetime import datetime, timezone
 
 from chat_graph.chat_graph import build_chat_graph
-from configs.db_config import threads_collection, get_checkpointer
+
 
 router = APIRouter(prefix="/threads", tags=["Threads"])
 
@@ -142,3 +158,109 @@ async def get_thread_messages(
             "error": str(e),
             "messages": [],
         }
+    
+
+
+
+@router.delete("/{thread_id}")
+async def delete_thread(thread_id: str, request: Request):
+    try:
+        user = request.state.user
+
+        if not user:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        user_id = str(
+            user.get("id")
+            or user.get("_id")
+            or user.get("user_id")
+        )
+
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid user")
+
+        full_thread_id = f"{user_id}:{thread_id}"
+
+        # ----------------------------
+        # Check thread exists
+        # ----------------------------
+        thread = await threads_collection.find_one(
+            {"user_id": user_id, "thread_id": thread_id}
+        )
+
+        if not thread:
+            raise HTTPException(status_code=404, detail="Thread not found")
+
+        # =========================================================
+        # 1. DELETE FILE METADATA (Mongo)
+        # =========================================================
+        await file_uploads_collection.delete_many(
+            {"user_id": user_id, "thread_id": thread_id}
+        )
+
+        # =========================================================
+        # 2. DELETE UPLOADED FILES (uploads folder)
+        # =========================================================
+        upload_dir = os.path.abspath(
+            os.path.join("uploads", user_id, thread_id)
+        )
+
+        base_upload = os.path.abspath("uploads")
+
+        if upload_dir.startswith(base_upload) and os.path.exists(upload_dir):
+            shutil.rmtree(upload_dir)
+
+        # =========================================================
+        # 3. DELETE VECTOR STORE (storage folder)  ⭐ NEW
+        # =========================================================
+        vector_dir = os.path.abspath(
+            os.path.join("storage", user_id, thread_id)
+        )
+
+        base_storage = os.path.abspath("storage")
+
+        if vector_dir.startswith(base_storage) and os.path.exists(vector_dir):
+            shutil.rmtree(vector_dir)
+
+        # =========================================================
+        # 4. DELETE LANGGRAPH CHECKPOINTS
+        # =========================================================
+        checkpoint_db = sync_client[CHECK_DB]
+
+        await asyncio.to_thread(
+            checkpoint_db["checkpoints"].delete_many,
+            {"thread_id": full_thread_id},
+        )
+
+        await asyncio.to_thread(
+            checkpoint_db["checkpoint_writes"].delete_many,
+            {"thread_id": full_thread_id},
+        )
+
+        # =========================================================
+        # 5. DELETE THREAD DOCUMENT
+        # =========================================================
+        result = await threads_collection.delete_one(
+            {"user_id": user_id, "thread_id": thread_id}
+        )
+
+        if result.deleted_count == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="Thread already deleted or not found",
+            )
+
+        return {
+            "success": True,
+            "message": "Thread, files, vector store & checkpoints deleted successfully",
+            "thread_id": thread_id,
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}",
+        )

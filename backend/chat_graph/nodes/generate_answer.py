@@ -13,6 +13,7 @@ async def generate_answer_node(state):
     web_results = (state.get("web_results") or "").strip()
     memory = (state.get("longterm_memory") or "").strip()
     question = state.get("input_text") or ""
+    messages = state.get("messages", [])
 
     print("========== GENERATE DEBUG ==========")
     print("ROUTE:", route)
@@ -86,6 +87,7 @@ User Profile:
 
     result = await llm.ainvoke([
         SystemMessage(content=system_prompt),
+        *messages,
         HumanMessage(content=question)
     ])
 

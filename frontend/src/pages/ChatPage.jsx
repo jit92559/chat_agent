@@ -26,6 +26,7 @@ import {
   apiGetThreads,
   apiStreamChat,
   apiUploadFile,
+  apiDeleteThread
 } from '../api';
 
 const ACCEPTED_FILE_TYPES = '.pdf,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.webp';
@@ -116,6 +117,25 @@ function Message({
       </div>
     </div>
   );
+}
+async function handleDeleteThread(thread) {
+  try {
+    await apiDeleteThread(thread.thread_id);
+
+    setThreads((prev) =>
+      prev.filter((t) => t.thread_id !== thread.thread_id)
+    );
+
+    if (activeThread?.thread_id === thread.thread_id) {
+      setActiveThread(null);
+      setMessages([]);
+      setThreadFiles([]);
+      setSelectedFileId(null);
+      localStorage.removeItem('active_thread_id');
+    }
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 function FileIcon({ fileName = '' }) {
@@ -489,17 +509,28 @@ export default function ChatPage() {
           ) : (
             <div className="space-y-1">
               {threads.map((t) => (
-                <button
+                <div
                   key={t.thread_id}
-                  onClick={() => selectThread(t)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition truncate ${
-                    activeThread?.thread_id === t.thread_id
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  className="flex items-center gap-1"
                 >
-                  {t.title || 'New Chat'}
-                </button>
+                  <button
+                    onClick={() => selectThread(t)}
+                    className={`flex-1 text-left px-3 py-2 rounded-lg text-sm transition truncate ${
+                      activeThread?.thread_id === t.thread_id
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {t.title || 'New Chat'}
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteThread(t)}
+                    className="p-2 text-gray-400 hover:text-red-500"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               ))}
             </div>
           )}

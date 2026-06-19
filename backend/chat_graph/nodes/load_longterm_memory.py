@@ -6,7 +6,7 @@ from services.memory_service import get_longterm_memory
 async def load_longterm_memory_node(state):
     print("i am at load_longterm_memory_node")
     memory = await get_longterm_memory(state["user_id"])
-
+    print(memory)
     return {
         "longterm_memory": memory
     }

@@ -191,3 +191,23 @@ export async function apiGetFiles(threadId) {
   if (!res.ok) throw new Error(data.detail || data.error || 'Failed to fetch files');
   return data;
 }
+
+
+
+//DELETE THREADs
+// ── Delete Thread ────────────────────────────────────────────────────────────
+
+export async function apiDeleteThread(thread_id) {
+  const res = await fetch(`${API_BASE}/threads/${thread_id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to delete thread');
+  }
+
+  return data;
+}
