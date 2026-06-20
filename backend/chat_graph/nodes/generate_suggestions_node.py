@@ -26,7 +26,7 @@ Generate follow-up questions.
 
 Rules:
 
-- Generate 0 to 3 questions.
+- Generate 0 to 3 questions that can be asked by user.this question should be like asekd by user not you.
 - Questions must be relevant.
 - Questions must help continue the conversation.
 - Keep questions short.

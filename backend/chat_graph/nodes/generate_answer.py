@@ -42,9 +42,11 @@ Instructions:
 - If Internet Information is available, use it.
 - If Internet Information is insufficient, use general knowledge when appropriate.
 - Do not invent recent facts.
+-ask question to user to maintain conversation flow
 
 Internet Information:
 {web_results}
+
 """
 
     elif route == "rag_context":
@@ -65,9 +67,11 @@ Instructions:
 - Do not mention chunks, embeddings, retrieval, vector databases, context, or sources.
 - If Document Knowledge is insufficient, use general knowledge when appropriate.
 - Do not invent document content.
+-ask question to user to maintain conversation flow
 
 Document Knowledge:
 {context}
+
 """
 
     else:
@@ -80,9 +84,12 @@ Instructions:
 - Answer clearly and directly.
 - Use reasoning and general knowledge.
 - Use user profile information if useful.
+-ask question to user to maintain conversation flow
 
 User Profile:
 {memory}
+
+
 """
 
     result = await llm.ainvoke([

@@ -214,7 +214,7 @@ async def delete_thread(thread_id: str, request: Request):
         # 3. DELETE VECTOR STORE (storage folder)  ⭐ NEW
         # =========================================================
         vector_dir = os.path.abspath(
-            os.path.join("storage", user_id, thread_id)
+            os.path.join("storage","vectorstores" ,user_id, thread_id)
         )
 
         base_storage = os.path.abspath("storage")
