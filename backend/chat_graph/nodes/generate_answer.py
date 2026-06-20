@@ -1,47 +1,101 @@
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage
+
 from llms.chat_llm import get_llm
 
 
 async def generate_answer_node(state):
+    print("i am at generate_ans_node")
+
     llm = get_llm()
 
-    system_prompt = f"""
-You are an AI assistant.
+    route = state.get("route")
+    context = (state.get("context") or "").strip()
+    web_results = (state.get("web_results") or "").strip()
+    memory = (state.get("longterm_memory") or "").strip()
+    question = state.get("input_text") or ""
+    messages = state.get("messages", [])
 
-INSTRUCTIONS:
+    print("========== GENERATE DEBUG ==========")
+    print("ROUTE:", route)
+    print("STATUS:", state.get("status"))
+    print("CONTEXT LENGTH:", len(context))
+    print("WEB LENGTH:", len(web_results))
+    print("SELECTED FILE:", state.get("selected_file_id"))
 
-1. Answer the user's question directly.
-2. Never mention:
-   - context
-   - web results
-   - retrieved documents
-   - long-term memory
-   - sources
-   - reasoning process
-3. Never say:
-   - "Based on..."
-   - "According to..."
-   - "From the information provided..."
-   - "The context says..."
-   - "The web results show..."
-4. Do not explain how you got the answer.
-5. If information is available, answer naturally as if you already know it.
-6. If information is unavailable, say you do not know.
-7. Output ONLY the final answer.
+    if route == "internet_search":
 
-Knowledge:
-{state.get("context") or ""}
+        system_prompt = f"""
+You are a helpful AI assistant.
+
+The Internet Information section contains real search results.
+
+Instructions:
+
+- Use Internet Information as the primary source.
+- Answer the user's question directly.
+- Never say:
+  - I don't have internet access
+  - I cannot browse the internet
+  - I don't have real-time information
+  - I cannot access current news
+- Do not mention search results, retrieval systems, tools, context, or sources.
+- If Internet Information is available, use it.
+- If Internet Information is insufficient, use general knowledge when appropriate.
+- Do not invent recent facts.
+-ask question to user to maintain conversation flow
 
 Internet Information:
-{state.get("web_results") or ""}
+{web_results}
+
+"""
+
+    elif route == "rag_context":
+
+        system_prompt = f"""
+You are a helpful AI assistant.
+
+The Document Knowledge section contains content from uploaded documents.
+
+Instructions:
+
+- Use Document Knowledge as the primary source.
+- Answer confidently when the answer exists in the document.
+- Never say:
+  - I cannot access the document
+  - I cannot see the file
+  - I don't have access to uploaded files
+- Do not mention chunks, embeddings, retrieval, vector databases, context, or sources.
+- If Document Knowledge is insufficient, use general knowledge when appropriate.
+- Do not invent document content.
+-ask question to user to maintain conversation flow
+
+Document Knowledge:
+{context}
+
+"""
+
+    else:
+
+        system_prompt = f"""
+You are a helpful AI assistant.
+
+Instructions:
+
+- Answer clearly and directly.
+- Use reasoning and general knowledge.
+- Use user profile information if useful.
+-ask question to user to maintain conversation flow
 
 User Profile:
-{state.get("longterm_memory") or ""}
+{memory}
+
+
 """
 
     result = await llm.ainvoke([
         SystemMessage(content=system_prompt),
-        *state["messages"],
+        *messages,
+        HumanMessage(content=question)
     ])
 
     return {

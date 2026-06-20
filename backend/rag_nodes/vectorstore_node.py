@@ -12,6 +12,7 @@ embeddings = get_embedding_model()
 
 
 async def vectorstore_node(state: MainState) -> dict:
+    print("i am at vecotstore node")
     try:
         text = state["extracted_text"]
 
@@ -75,7 +76,7 @@ async def vectorstore_node(state: MainState) -> dict:
         await run_in_threadpool(_update_vectorstore_sync)
 
         invalidate_vectorstore(user_id, thread_id)
-
+        print("done")
         return {
             "vectorstore_path": vectorstore_path,
             "status": "vectorstore_updated",

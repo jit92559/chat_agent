@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+
 import {
   Bot,
   ChevronLeft,
@@ -25,6 +27,7 @@ import {
   apiGetThreads,
   apiStreamChat,
   apiUploadFile,
+  apiDeleteThread
 } from '../api';
 
 const ACCEPTED_FILE_TYPES = '.pdf,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.webp';
@@ -62,7 +65,13 @@ function Avatar({ role }) {
   );
 }
 
-function Message({ role, content, file_name }) {
+function Message({
+  role,
+  content,
+  file_name,
+  suggestions = [],
+  onSuggestionClick,
+}) {
   const isUser = role === 'user';
 
   return (
@@ -83,11 +92,40 @@ function Message({ role, content, file_name }) {
           </div>
         )}
 
-        {content}
+        {isUser ? (
+          <span>{content}</span>
+        ) : (
+          <div className="markdown-body">
+            <ReactMarkdown>{content}</ReactMarkdown>
+          </div>
+        )}
+        {role === 'assistant' && suggestions.length > 0 && (
+  <div className="mt-3 flex flex-wrap gap-2">
+    {suggestions.map((suggestion, index) => (
+      <button
+        key={index}
+        onClick={() => onSuggestionClick?.(suggestion)}
+        className="
+          text-xs
+          px-3
+          py-1.5
+          rounded-full
+          border
+          border-gray-300
+          hover:bg-gray-100
+          transition
+        "
+      >
+        {suggestion}
+      </button>
+    ))}
+  </div>
+)}
       </div>
     </div>
   );
 }
+
 
 function FileIcon({ fileName = '' }) {
   const lower = fileName.toLowerCase();
@@ -172,8 +210,52 @@ export default function ChatPage() {
     }
   }
 
+  // ─── Delete empty thread when switching away ───────────────────────────
+  async function deleteIfEmpty(thread) {
+    if (!thread) return;
+    // Only delete if it's still titled 'New Chat' and has no messages
+    if (thread.title !== 'New Chat') return;
+    try {
+      await apiDeleteThread(thread.thread_id);
+      setThreads((prev) => prev.filter((t) => t.thread_id !== thread.thread_id));
+      if (localStorage.getItem('active_thread_id') === thread.thread_id) {
+        localStorage.removeItem('active_thread_id');
+      }
+    } catch (_) {
+      // silently ignore — thread may already have messages
+    }
+  }
+
+  // ─── Delete thread instantly from sidebar ──────────────────────────────
+  async function handleDeleteThread(thread) {
+    try {
+      // Optimistic update: remove from UI immediately
+      setThreads((prev) => prev.filter((t) => t.thread_id !== thread.thread_id));
+
+      if (activeThread?.thread_id === thread.thread_id) {
+        setActiveThread(null);
+        setMessages([]);
+        setThreadFiles([]);
+        setSelectedFileId(null);
+        localStorage.removeItem('active_thread_id');
+      }
+
+      // Then actually delete on backend
+      await apiDeleteThread(thread.thread_id);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      // Reload threads to restore correct state if delete failed
+      loadThreads();
+    }
+  }
+
   async function handleNewChat() {
     stopRunningStream();
+
+    // Delete current thread if it's empty (no messages sent yet)
+    if (activeThread && messages.length === 0) {
+      await deleteIfEmpty(activeThread);
+    }
 
     try {
       const data = await apiCreateThread();
@@ -199,6 +281,11 @@ export default function ChatPage() {
 
   async function selectThread(thread) {
     stopRunningStream();
+
+    // Clean up current thread if it's empty before switching
+    if (activeThread && activeThread.thread_id !== thread.thread_id && messages.length === 0) {
+      await deleteIfEmpty(activeThread);
+    }
 
     localStorage.setItem('active_thread_id', thread.thread_id);
 
@@ -328,6 +415,18 @@ export default function ChatPage() {
       textareaRef.current.style.height = 'auto';
     }
 
+    // Auto-title: use first message text (truncated to 40 chars) as thread title
+    const isFirstMessage = messages.length === 0;
+    if (isFirstMessage) {
+      const newTitle = text.length > 40 ? text.slice(0, 40) + '…' : text;
+      setActiveThread((prev) => ({ ...prev, title: newTitle }));
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.thread_id === activeThread.thread_id ? { ...t, title: newTitle } : t
+        )
+      );
+    }
+
     try {
       let assistantText = '';
 
@@ -343,27 +442,46 @@ export default function ChatPage() {
 
       streamAbortRef.current = new AbortController();
 
-      await apiStreamChat({
-        thread_id: activeThread.thread_id,
-        message: text,
-        selected_file_id: selectedFileId,
-        signal: streamAbortRef.current.signal,
-        onToken: (token) => {
-          assistantText += token;
+          await apiStreamChat({
+            thread_id: activeThread.thread_id,
+            message: text,
+            selected_file_id: selectedFileId,
+            signal: streamAbortRef.current.signal,
 
-          setMessages((prev) => {
-            const updated = [...prev];
+            onToken: (token) => {
+              assistantText += token;
 
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              role: 'assistant',
-              content: assistantText,
-            };
+              setMessages((prev) => {
+                const updated = [...prev];
 
-            return updated;
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  role: 'assistant',
+                  content: assistantText,
+                };
+
+                return updated;
+              });
+            },
+
+            onComplete: ({ suggestions }) => {
+              setMessages((prev) => {
+                const updated = [...prev];
+
+                if (
+                  updated.length > 0 &&
+                  updated[updated.length - 1].role === 'assistant'
+                ) {
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    suggestions: suggestions || [],
+                  };
+                }
+
+                return updated;
+              });
+            },
           });
-        },
-      });
     } catch (err) {
       if (err.name === 'AbortError') {
         return;
@@ -441,17 +559,28 @@ export default function ChatPage() {
           ) : (
             <div className="space-y-1">
               {threads.map((t) => (
-                <button
+                <div
                   key={t.thread_id}
-                  onClick={() => selectThread(t)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition truncate ${
-                    activeThread?.thread_id === t.thread_id
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  className="flex items-center gap-1"
                 >
-                  {t.title || 'New Chat'}
-                </button>
+                  <button
+                    onClick={() => selectThread(t)}
+                    className={`flex-1 text-left px-3 py-2 rounded-lg text-sm transition truncate ${
+                      activeThread?.thread_id === t.thread_id
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {t.title || 'New Chat'}
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteThread(t)}
+                    className="p-2 text-gray-400 hover:text-red-500"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -546,12 +675,20 @@ export default function ChatPage() {
           ) : (
             <>
               {messages.map((msg, i) => (
-                <Message
-                  key={`${msg.id || i}-${msg.role}`}
-                  role={msg.role}
-                  content={msg.content}
-                  file_name={msg.file_name}
-                />
+                    <Message
+                      key={`${msg.id || i}-${msg.role}`}
+                      role={msg.role}
+                      content={msg.content}
+                      file_name={msg.file_name}
+                      suggestions={msg.suggestions}
+                      onSuggestionClick={(text) => {
+                        setInput(text);
+
+                        setTimeout(() => {
+                          textareaRef.current?.focus();
+                        }, 0);
+                      }}
+                    />
               ))}
 
               {isTyping && <TypingIndicator />}

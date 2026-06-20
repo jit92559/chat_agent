@@ -83,6 +83,7 @@ export async function apiStreamChat({
   selected_file_id,
   signal,
   onToken,
+  onComplete,
 }) {
   const token = getToken();
 
@@ -91,7 +92,11 @@ export async function apiStreamChat({
     signal,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {}),
     },
     body: JSON.stringify({
       thread_id,
@@ -111,9 +116,12 @@ export async function apiStreamChat({
 
   while (true) {
     const { value, done } = await reader.read();
+
     if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
+    buffer += decoder.decode(value, {
+      stream: true,
+    });
 
     const events = buffer.split('\n\n');
     buffer = events.pop() || '';
@@ -121,15 +129,32 @@ export async function apiStreamChat({
     for (const event of events) {
       if (!event.startsWith('data: ')) continue;
 
-      const payload = JSON.parse(event.replace('data: ', ''));
+      const payload = JSON.parse(
+        event.replace('data: ', '')
+      );
 
-      if (payload.token) onToken(payload.token);
-      if (payload.error) throw new Error(payload.error);
-      if (payload.done) return;
+      if (payload.error) {
+        throw new Error(payload.error);
+      }
+
+      if (payload.token) {
+        onToken?.(payload.token);
+      }
+
+      if (payload.done) {
+        onComplete?.({
+          answer: payload.answer,
+          suggestions: payload.suggestions || [],
+        });
+
+        return {
+          answer: payload.answer,
+          suggestions: payload.suggestions || [],
+        };
+      }
     }
   }
 }
-
 // ── File Upload ───────────────────────────────────────────────────────────────
 
 export async function apiUploadFile({ thread_id, file }) {
@@ -164,5 +189,25 @@ export async function apiGetFiles(threadId) {
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || data.error || 'Failed to fetch files');
+  return data;
+}
+
+
+
+//DELETE THREADs
+// ── Delete Thread ────────────────────────────────────────────────────────────
+
+export async function apiDeleteThread(thread_id) {
+  const res = await fetch(`${API_BASE}/threads/${thread_id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to delete thread');
+  }
+
   return data;
 }
