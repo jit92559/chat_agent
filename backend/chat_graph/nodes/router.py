@@ -1,54 +1,97 @@
-"""
-router.py - Keyword-based router (zero LLM calls)
+# graph/nodes/router.py
 
-WHY: The original router called the LLM just to classify the route — that was
-an entire inference pass (20-40s on CPU) wasted before the actual answer even started.
-
-This version uses fast keyword/pattern matching instead.
-Same accuracy for clear-cut queries, instant execution (< 1ms).
-"""
-
-# Keywords that strongly indicate web/internet search is needed
-INTERNET_KEYWORDS = {
-    "today", "current", "latest", "now", "live", "real-time",
-    "news", "weather", "price", "stock", "score", "result",
-    "who won", "happening", "recent", "this week", "this month",
-    "right now", "at the moment", "currently", "update",
-}
-
-# Keywords that indicate the user is referring to an uploaded document
-RAG_KEYWORDS = {
-    "document", "file", "pdf", "ppt", "pptx", "docx", "doc",
-    "uploaded", "this file", "this doc", "this pdf", "the file",
-    "resume", "report", "summarize this", "explain this",
-    "what does it say", "in the document", "from the file",
-    "according to the file", "mention", "chapter", "page",
-}
+from langchain_core.messages import HumanMessage
+from llms.chat_llm import get_llm
 
 
 async def router_node(state):
-    """
-    Classifies the user query into one of:
-      - normal_chat     (default)
-      - internet_search (time-sensitive / current events)
-      - rag_context     (user asks about an uploaded file)
+    print("i am at router_node")
+    text = (state.get("input_text") or "").lower()
 
-    Uses keyword matching — no LLM call needed.
-    """
-    query = (state.get("input_text") or "").lower()
-    selected_file_id = state.get("selected_file_id")
+    rag_keywords = [
+        "uploaded",
+        "document",
+        "pdf",
+        "ppt",
+        "docx",
+        "file",
+        "image",
+        "this document",
+        "this file",
+        "this pdf",
+        "selected file",
+    ]
 
-    # If a file is explicitly selected in the UI, always use RAG
-    if selected_file_id:
+    if state.get("selected_file_id") or any(k in text for k in rag_keywords):
         return {"route": "rag_context"}
 
-    # Check for RAG keywords first (more specific)
-    if any(kw in query for kw in RAG_KEYWORDS):
-        return {"route": "rag_context"}
+    internet_keywords = [
+        "latest",
+        "current",
+        "today",
+        "now",
+        "news",
+        "weather",
+        "stock price",
+        "bitcoin price",
+        "recent",
+        "yesterday",
+        "tomorrow",
+    ]
 
-    # Check for internet search keywords
-    if any(kw in query for kw in INTERNET_KEYWORDS):
+    if any(k in text for k in internet_keywords):
         return {"route": "internet_search"}
 
-    # Default: normal conversation
-    return {"route": "normal_chat"}
+    llm = get_llm()
+
+    prompt = f"""
+You are a routing classifier.
+
+Return exactly one route:
+
+normal_chat
+internet_search
+rag_context
+
+Rules:
+
+normal_chat:
+- General chat
+- Coding
+- Explanation
+- Grammar
+- Math
+- Writing
+- Reasoning
+
+internet_search:
+- Latest/current/recent information
+- News
+- Weather
+- Stock/crypto price
+- Current policy
+- Sports result
+- Date-based current event
+
+rag_context:
+- Uploaded document/file/PDF/PPT/image
+- User asks about selected file
+- User asks what this document says
+
+User Query:
+{state["input_text"]}
+
+Return only one route.
+"""
+
+    result = await llm.ainvoke([HumanMessage(content=prompt)])
+    route = result.content.strip().lower()
+
+    if "rag_context" in route:
+        route = "rag_context"
+    elif "internet_search" in route:
+        route = "internet_search"
+    else:
+        route = "normal_chat"
+
+    return {"route": route}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import {
   Bot,
   ChevronLeft,
@@ -25,6 +26,7 @@ import {
   apiGetThreads,
   apiStreamChat,
   apiUploadFile,
+  apiDeleteThread
 } from '../api';
 
 const ACCEPTED_FILE_TYPES = '.pdf,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.webp';
@@ -62,7 +64,13 @@ function Avatar({ role }) {
   );
 }
 
-function Message({ role, content, file_name }) {
+function Message({
+  role,
+  content,
+  file_name,
+  suggestions = [],
+  onSuggestionClick,
+}) {
   const isUser = role === 'user';
 
   return (
@@ -84,9 +92,50 @@ function Message({ role, content, file_name }) {
         )}
 
         {content}
+        {role === 'assistant' && suggestions.length > 0 && (
+  <div className="mt-3 flex flex-wrap gap-2">
+    {suggestions.map((suggestion, index) => (
+      <button
+        key={index}
+        onClick={() => onSuggestionClick?.(suggestion)}
+        className="
+          text-xs
+          px-3
+          py-1.5
+          rounded-full
+          border
+          border-gray-300
+          hover:bg-gray-100
+          transition
+        "
+      >
+        {suggestion}
+      </button>
+    ))}
+  </div>
+)}
       </div>
     </div>
   );
+}
+async function handleDeleteThread(thread) {
+  try {
+    await apiDeleteThread(thread.thread_id);
+
+    setThreads((prev) =>
+      prev.filter((t) => t.thread_id !== thread.thread_id)
+    );
+
+    if (activeThread?.thread_id === thread.thread_id) {
+      setActiveThread(null);
+      setMessages([]);
+      setThreadFiles([]);
+      setSelectedFileId(null);
+      localStorage.removeItem('active_thread_id');
+    }
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 function FileIcon({ fileName = '' }) {
@@ -343,27 +392,46 @@ export default function ChatPage() {
 
       streamAbortRef.current = new AbortController();
 
-      await apiStreamChat({
-        thread_id: activeThread.thread_id,
-        message: text,
-        selected_file_id: selectedFileId,
-        signal: streamAbortRef.current.signal,
-        onToken: (token) => {
-          assistantText += token;
+          await apiStreamChat({
+            thread_id: activeThread.thread_id,
+            message: text,
+            selected_file_id: selectedFileId,
+            signal: streamAbortRef.current.signal,
 
-          setMessages((prev) => {
-            const updated = [...prev];
+            onToken: (token) => {
+              assistantText += token;
 
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              role: 'assistant',
-              content: assistantText,
-            };
+              setMessages((prev) => {
+                const updated = [...prev];
 
-            return updated;
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  role: 'assistant',
+                  content: assistantText,
+                };
+
+                return updated;
+              });
+            },
+
+            onComplete: ({ suggestions }) => {
+              setMessages((prev) => {
+                const updated = [...prev];
+
+                if (
+                  updated.length > 0 &&
+                  updated[updated.length - 1].role === 'assistant'
+                ) {
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    suggestions: suggestions || [],
+                  };
+                }
+
+                return updated;
+              });
+            },
           });
-        },
-      });
     } catch (err) {
       if (err.name === 'AbortError') {
         return;
@@ -441,17 +509,28 @@ export default function ChatPage() {
           ) : (
             <div className="space-y-1">
               {threads.map((t) => (
-                <button
+                <div
                   key={t.thread_id}
-                  onClick={() => selectThread(t)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition truncate ${
-                    activeThread?.thread_id === t.thread_id
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
+                  className="flex items-center gap-1"
                 >
-                  {t.title || 'New Chat'}
-                </button>
+                  <button
+                    onClick={() => selectThread(t)}
+                    className={`flex-1 text-left px-3 py-2 rounded-lg text-sm transition truncate ${
+                      activeThread?.thread_id === t.thread_id
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {t.title || 'New Chat'}
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteThread(t)}
+                    className="p-2 text-gray-400 hover:text-red-500"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -546,12 +625,20 @@ export default function ChatPage() {
           ) : (
             <>
               {messages.map((msg, i) => (
-                <Message
-                  key={`${msg.id || i}-${msg.role}`}
-                  role={msg.role}
-                  content={msg.content}
-                  file_name={msg.file_name}
-                />
+                    <Message
+                      key={`${msg.id || i}-${msg.role}`}
+                      role={msg.role}
+                      content={msg.content}
+                      file_name={msg.file_name}
+                      suggestions={msg.suggestions}
+                      onSuggestionClick={(text) => {
+                        setInput(text);
+
+                        setTimeout(() => {
+                          textareaRef.current?.focus();
+                        }, 0);
+                      }}
+                    />
               ))}
 
               {isTyping && <TypingIndicator />}

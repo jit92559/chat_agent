@@ -1,16 +1,10 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from datetime import datetime, timezone
 import json
-import asyncio
 
 from chat_graph.chat_graph import build_chat_graph
-from configs.db_config import (
-    get_checkpointer,
-    messages_collection,
-    threads_collection,
-)
+from configs.db_config import get_checkpointer,threads_collection
 
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
@@ -27,76 +21,14 @@ class ChatRequest(BaseModel):
 @router.post("/stream")
 async def stream_chat(req: ChatRequest, request: Request):
     user = request.state.user
-    user_id = str(user.get("id") or user.get("_id") or user.get("user_id"))
-    email = user.get("email")
+
+    user_id = str(
+        user.get("id")
+        or user.get("_id")
+        or user.get("user_id")
+    )
 
     checkpoint_thread_id = f"{user_id}:{req.thread_id}"
-    now = datetime.now(timezone.utc)
-
-    await messages_collection.insert_one(
-        {
-            "user_id": user_id,
-            "email": email,
-            "thread_id": req.thread_id,
-            "role": "user",
-            "content": req.message,
-            "selected_file_id": req.selected_file_id,
-            "created_at": now,
-        }
-    )
-
-    await threads_collection.update_one(
-        {
-            "user_id": user_id,
-            "thread_id": req.thread_id,
-        },
-        {
-            "$set": {
-                "updated_at": now,
-            }
-        },
-    )
-
-    async def save_assistant_message(final_answer: str):
-        if not final_answer.strip():
-            return
-
-        save_time = datetime.now(timezone.utc)
-
-        await messages_collection.insert_one(
-            {
-                "user_id": user_id,
-                "email": email,
-                "thread_id": req.thread_id,
-                "role": "assistant",
-                "content": final_answer,
-                "created_at": save_time,
-            }
-        )
-
-        await threads_collection.update_one(
-            {
-                "user_id": user_id,
-                "thread_id": req.thread_id,
-            },
-            {
-                "$set": {
-                    "updated_at": save_time,
-                }
-            },
-        )
-
-    async def save_error_message(error_msg: str):
-        await messages_collection.insert_one(
-            {
-                "user_id": user_id,
-                "email": email,
-                "thread_id": req.thread_id,
-                "role": "assistant",
-                "content": f"Error: {error_msg}",
-                "created_at": datetime.now(timezone.utc),
-            }
-        )
 
     async def event_generator():
         answer_parts = []
@@ -106,11 +38,13 @@ async def stream_chat(req: ChatRequest, request: Request):
             "thread_id": req.thread_id,
             "input_text": req.message,
             "selected_file_id": req.selected_file_id,
+
             "longterm_memory": None,
             "route": None,
             "context": None,
             "web_results": None,
             "answer": None,
+            "suggestions": [],
         }
 
         config = {
@@ -128,37 +62,89 @@ async def stream_chat(req: ChatRequest, request: Request):
                 if await request.is_disconnected():
                     return
 
+                # Stream only answer tokens
                 if event["event"] != "on_chat_model_stream":
                     continue
 
-                node_name = event.get("metadata", {}).get("langgraph_node")
+                node_name = event.get("metadata", {}).get(
+                    "langgraph_node"
+                )
 
                 if node_name != "generate_answer":
                     continue
 
                 chunk = event["data"]["chunk"]
 
-                if chunk.content:
-                    answer_parts.append(chunk.content)
-                    yield f"data: {json.dumps({'token': chunk.content})}\n\n"
+                if not chunk.content:
+                    continue
+
+                answer_parts.append(chunk.content)
+
+                yield (
+                    f"data: {json.dumps({
+                        'type': 'token',
+                        'token': chunk.content
+                    })}\n\n"
+                )
 
             final_answer = "".join(answer_parts)
+            thread_obj = await threads_collection.find_one({
+                    "thread_id": req.thread_id,
+                    "user_id": user_id
+                })
+            if thread_obj and thread_obj.get("title") in [None, "", "New Chat"]:
+                auto_title = final_answer[:50]
 
-            yield f"data: {json.dumps({'done': True})}\n\n"
+                await threads_collection.update_one(
+                    {"thread_id": req.thread_id, "user_id": user_id},
+                    {"$set": {"title": auto_title}}
+                )
+            # Read final graph state
+            suggestions = []
 
-            asyncio.create_task(
-                save_assistant_message(final_answer)
+            try:
+                final_state = await graph.aget_state(config)
+
+                print("\n========== FINAL STATE ==========")
+
+                if (
+                    final_state
+                    and hasattr(final_state, "values")
+                    and isinstance(final_state.values, dict)
+                ):
+                    print(final_state.values)
+
+                    suggestions = final_state.values.get(
+                        "suggestions",
+                        []
+                    )
+
+            except Exception as state_error:
+                print(
+                    "STATE FETCH ERROR:",
+                    str(state_error)
+                )
+
+            # Final SSE event
+            yield (
+                f"data: {json.dumps({
+                    'type': 'complete',
+                    'done': True,
+                    'answer': final_answer,
+                    'suggestions': suggestions
+                })}\n\n"
             )
 
         except Exception as e:
-            error_msg = str(e)
+            print("STREAM ERROR:", str(e))
 
             if not await request.is_disconnected():
-                yield f"data: {json.dumps({'error': error_msg})}\n\n"
-
-            asyncio.create_task(
-                save_error_message(error_msg)
-            )
+                yield (
+                    f"data: {json.dumps({
+                        'type': 'error',
+                        'error': str(e)
+                    })}\n\n"
+                )
 
     return StreamingResponse(
         event_generator(),
