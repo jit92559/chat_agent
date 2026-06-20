@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 
 import {
   Bot,
@@ -91,7 +92,13 @@ function Message({
           </div>
         )}
 
-        {content}
+        {isUser ? (
+          <span>{content}</span>
+        ) : (
+          <div className="markdown-body">
+            <ReactMarkdown>{content}</ReactMarkdown>
+          </div>
+        )}
         {role === 'assistant' && suggestions.length > 0 && (
   <div className="mt-3 flex flex-wrap gap-2">
     {suggestions.map((suggestion, index) => (
@@ -118,25 +125,7 @@ function Message({
     </div>
   );
 }
-async function handleDeleteThread(thread) {
-  try {
-    await apiDeleteThread(thread.thread_id);
 
-    setThreads((prev) =>
-      prev.filter((t) => t.thread_id !== thread.thread_id)
-    );
-
-    if (activeThread?.thread_id === thread.thread_id) {
-      setActiveThread(null);
-      setMessages([]);
-      setThreadFiles([]);
-      setSelectedFileId(null);
-      localStorage.removeItem('active_thread_id');
-    }
-  } catch (err) {
-    console.error(err);
-  }
-}
 
 function FileIcon({ fileName = '' }) {
   const lower = fileName.toLowerCase();
@@ -221,8 +210,52 @@ export default function ChatPage() {
     }
   }
 
+  // ─── Delete empty thread when switching away ───────────────────────────
+  async function deleteIfEmpty(thread) {
+    if (!thread) return;
+    // Only delete if it's still titled 'New Chat' and has no messages
+    if (thread.title !== 'New Chat') return;
+    try {
+      await apiDeleteThread(thread.thread_id);
+      setThreads((prev) => prev.filter((t) => t.thread_id !== thread.thread_id));
+      if (localStorage.getItem('active_thread_id') === thread.thread_id) {
+        localStorage.removeItem('active_thread_id');
+      }
+    } catch (_) {
+      // silently ignore — thread may already have messages
+    }
+  }
+
+  // ─── Delete thread instantly from sidebar ──────────────────────────────
+  async function handleDeleteThread(thread) {
+    try {
+      // Optimistic update: remove from UI immediately
+      setThreads((prev) => prev.filter((t) => t.thread_id !== thread.thread_id));
+
+      if (activeThread?.thread_id === thread.thread_id) {
+        setActiveThread(null);
+        setMessages([]);
+        setThreadFiles([]);
+        setSelectedFileId(null);
+        localStorage.removeItem('active_thread_id');
+      }
+
+      // Then actually delete on backend
+      await apiDeleteThread(thread.thread_id);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      // Reload threads to restore correct state if delete failed
+      loadThreads();
+    }
+  }
+
   async function handleNewChat() {
     stopRunningStream();
+
+    // Delete current thread if it's empty (no messages sent yet)
+    if (activeThread && messages.length === 0) {
+      await deleteIfEmpty(activeThread);
+    }
 
     try {
       const data = await apiCreateThread();
@@ -248,6 +281,11 @@ export default function ChatPage() {
 
   async function selectThread(thread) {
     stopRunningStream();
+
+    // Clean up current thread if it's empty before switching
+    if (activeThread && activeThread.thread_id !== thread.thread_id && messages.length === 0) {
+      await deleteIfEmpty(activeThread);
+    }
 
     localStorage.setItem('active_thread_id', thread.thread_id);
 
@@ -375,6 +413,18 @@ export default function ChatPage() {
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
+    }
+
+    // Auto-title: use first message text (truncated to 40 chars) as thread title
+    const isFirstMessage = messages.length === 0;
+    if (isFirstMessage) {
+      const newTitle = text.length > 40 ? text.slice(0, 40) + '…' : text;
+      setActiveThread((prev) => ({ ...prev, title: newTitle }));
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.thread_id === activeThread.thread_id ? { ...t, title: newTitle } : t
+        )
+      );
     }
 
     try {
